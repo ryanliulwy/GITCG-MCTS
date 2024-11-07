@@ -34,7 +34,7 @@ for i in range(total_games):
         game_state, encoded_state, reward, turn, done = env.step(action)
         history.append(game_state)
         if (game_state.game_end()):
-            print("Game #%d complete" % i)
+            print("Game #%d complete" % (i+1))
             if game_state.get_winner() == Pid.P1:
                 p1_wins += 1
             elif game_state.get_winner() == Pid.P2:
@@ -45,4 +45,4 @@ end = time.time()
 print(end - start)
 print("P1 wins:", p1_wins)
 print("P2 wins:", p2_wins)
-print("Totaal games:", total_games)
+print("Total games:", total_games)

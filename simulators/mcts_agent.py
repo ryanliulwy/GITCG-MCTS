@@ -20,14 +20,19 @@ class Node:
 
 
 class MCTSAgent(PlayerAgent):
-    def __init__(self, history: list[GameState], pid: Pid) -> None:
-        self.budget = 20
+    def __init__(self, ) -> None:
+        self.budget = 100
+        # self.game_state = history[-1]
+        # self.pid = pid
+        # self.root = Node(history[-1], [])
+
+    # mcts_search() 
+    def choose_action(self, history: list[GameState], pid: Pid) -> PlayerAction:
+        # moving intialization here
         self.game_state = history[-1]
         self.pid = pid
         self.root = Node(history[-1], [])
 
-    # mcts_search() 
-    def choose_action(self, history: list[GameState], pid: Pid) -> PlayerAction:
         iters = 0
         # mcts loop
         while (iters < self.budget):
@@ -45,8 +50,10 @@ class MCTSAgent(PlayerAgent):
         return action
 
     def select(self, node: Node):
+        # print("SELECTING...")
         while not node.is_terminal:
             # limit to X different actions
+            # print(len(node.tried_actions))
             if len(node.tried_actions) <= 5:
                 # any unseen actions after the first X 
                 # pretend they don't exist
@@ -117,13 +124,16 @@ class MCTSAgent(PlayerAgent):
         # try 3
         cur_state = copy.copy(self.game_state)
         while not cur_state.game_end():
-            if cur_state.waiting_for() is None:
+            if cur_state.waiting_for() == None:
                 cur_state = cur_state.step()
             else:
-                act_gen = cur_state.action_generator(cur_state.waiting_for())
-                action = self._action_generator_chooser(act_gen) 
-                cur_state = cur_state.action_step(cur_state.waiting_for(), action)
-
+                action = self._action_generator_chooser(cur_state.action_generator(cur_state.waiting_for()))
+                new_state = cur_state.action_step(cur_state.waiting_for(), action)
+                if new_state == None:
+                    print("error: new state is none")
+                else:
+                    cur_state = new_state
+        # print("end rollout")
         # reward indicator for rollout
         reward = {}
         if cur_state.get_winner() == Pid.P1:
@@ -151,12 +161,12 @@ class MCTSAgent(PlayerAgent):
                 choices = action_generator.choices()
                 choice: DecidedChoiceType  # type: ignore
                 if isinstance(choices, tuple):
-                    print("TUPLE")
+                    # print("TUPLE")
                     game_state = action_generator.game_state
                     if game_state.phase == game_state.mode.roll_phase() and random.random() < 0.8:
                         choices = tuple(c for c in choices if c is not ActionType.END_ROUND)
                     choice = random.choice(choices)
-                    print(choice)
+                    # print(choice)
                     action_generator = action_generator.choose(choice)
                 elif isinstance(choices, AbstractDice):
                     optional_choice = action_generator.dice_available().smart_selection(
@@ -170,10 +180,10 @@ class MCTSAgent(PlayerAgent):
                     choice = optional_choice
                     action_generator = action_generator.choose(choice)
                 elif isinstance(choices, Cards):
-                    print("CARDS")
+                    # print("CARDS")
                     _, choice = choices.pick_random(random.randint(0, choices.num_cards()))
                     action_generator = action_generator.choose(choice)
-                    print(choice)
+                    # print(choice)
                 elif isinstance(choices, ActualDice):
                     game_state = action_generator.game_state
                     wanted_elems = game_state.get_player(
