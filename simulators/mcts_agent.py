@@ -8,23 +8,21 @@ import copy, random
 class Node:
     def __init__(self, game_state: GameState, actions: list[PlayerAction], parent = None) -> None:
         # basic mcts
-        self.state = copy.deepcopy(game_state)
+        self.state = copy.copy(game_state) # immutable
         self.num_wins = 0
         self.num_visits = 0
         self.children = [] # (action, child node)
         self.parent = parent
 
         # modify for tcg
-        self.tried_actions = copy.deepcopy(actions) # used to be untried_actions 
+        self.tried_actions = copy.copy(actions) # immutable, used to be untried_actions
         self.is_terminal = game_state.game_end() # gamestate is simulator
-        self.pid = game_state.active_player_id
 
 
 class MCTSAgent(PlayerAgent):
     def __init__(self, history: list[GameState], pid: Pid) -> None:
         self.budget = 20
-        self.simulator = history[-1]
-        # self.act_gen = self.simulator.action_generator(pid)
+        self.game_state = history[-1]
         self.pid = pid
         self.root = Node(history[-1], [])
 
@@ -58,14 +56,13 @@ class MCTSAgent(PlayerAgent):
         return node
 
     def expand(self, node: Node):
-        print("!!!!!", node.state)
         # duplicates allowed
-        action = self._action_generator_chooser(node.state.action_generator(node.pid))
-        print(action)
+        action = self._action_generator_chooser(node.state.action_generator(node.state.waiting_for()))
         node.tried_actions.append(action)
-        self.simulator = node.state
-        self.simulator.action_step(node.pid, action)
-        child_node = Node(self.simulator, [], node)
+        self.game_state = copy.copy(node.state)
+        self.game_state.action_step(node.state.waiting_for(), action) 
+        # note: should it be taking an action step?
+        child_node = Node(self.game_state, [], node)
         node.children.append((action, child_node))
         return child_node
     
@@ -89,21 +86,43 @@ class MCTSAgent(PlayerAgent):
 
         return best_child_node, best_action, action_ucb_table
 
-    def backpropagate(self, node: Node, result: list[int]):
-        # each node should store the number of wins 
-        # for the player of its **parent** node
-        while (node is not None): 
-            node.num_visits += 1
-            node.num_wins += 1 - result[node.state[0]]
-            node = node.parent
-
     def rollout(self, node: Node):
+        # try 1
         # rollout (random)
-        cur_state = node.state
-        while not cur_state.game_end():
-            print("rollout: ", cur_state.active_player_id, cur_state)
-            cur_state.action_step(cur_state.active_player_id, self._action_generator_chooser(cur_state.action_generator(cur_state.active_player_id)))
+        # cur_state = copy.deepcopy(node.state)
+        # while not cur_state.game_end():
+        #     if cur_state.waiting_for() == None:
+        #         cur_state.step()
+        #     else:
+        #         action = self._action_generator_chooser(cur_state.action_generator(cur_state.active_player_id))
+        #         cur_state.action_step(cur_state.active_player_id, action)
+
+        # try 2
+        # cur_state = copy.deepcopy(node.state)  
+        # opp_player = { Pid.P1: Pid.P2, Pid.P2: Pid.P1 }
+        # while not cur_state.game_end(): 
+        #     current_player = cur_state.active_player_id 
+        #     act_gen = cur_state.action_generator(current_player)
+        #     if act_gen is None: # wrong player
+        #         act_gen = cur_state.action_generator(opp_player[current_player])
+        #         current_player = opp_player[current_player]
+        #     if act_gen is None: # shouldn't happen (?) but can just try step 
+        #         cur_state = cur_state.step()
+        #         continue
+            
+        #     action = self._action_generator_chooser(act_gen) 
+        #     print(current_player, action)
+        #     cur_state = cur_state.action_step(current_player, action)
         
+        # try 3
+        cur_state = copy.copy(self.game_state)
+        while not cur_state.game_end():
+            if cur_state.waiting_for() is None:
+                cur_state = cur_state.step()
+            else:
+                act_gen = cur_state.action_generator(cur_state.waiting_for())
+                action = self._action_generator_chooser(act_gen) 
+                cur_state = cur_state.action_step(cur_state.waiting_for(), action)
 
         # reward indicator for rollout
         reward = {}
@@ -117,44 +136,27 @@ class MCTSAgent(PlayerAgent):
             reward[Pid.P1] = 0
             reward[Pid.P2] = 0
         return reward
-
-    # can replace with the original random action chooser from github
-    # choosing random action (a whole turn) for now
-    # def _action_generator_chooser(self, action_generator: ActionGenerator) -> PlayerAction:
-        while not action_generator.filled():
-            choices = action_generator.choices()
-            # print(choices)
-            if (type(choices) == tuple):
-                print("typle")
-                # no end rounds allowed!
-                choices = tuple(c for c in choices if c is not ActionType.END_ROUND)
-                choice = random.choice(choices)
-            elif (type(choices) == ActualDice):
-                print("actual dice")
-                choice = action_generator.dice_available()
-            elif (type(choices) == AbstractDice):
-                print("abstract dice")
-                choice = action_generator.dice_available().smart_selection(choices)
-            elif (type(choices) == Cards):
-                print("cards")
-                choice = choices.pick_random(random.randint(0,5))[0]
-            print(choice)
-            action_generator = action_generator.choose(choice)
-        action = action_generator.generate_action()
-        return action
     
+    def backpropagate(self, node: Node, result: list[Pid]):
+        # each node should store the number of wins 
+        # for the player of its **parent** node
+        while (node is not None): 
+            node.num_visits += 1
+            node.num_wins += 1 - result[node.state.waiting_for()]
+            node = node.parent
+
     def _action_generator_chooser(self, action_generator: ActionGenerator) -> PlayerAction:
         try:
             while not action_generator.filled():
-                # print("not filled!")
                 choices = action_generator.choices()
                 choice: DecidedChoiceType  # type: ignore
                 if isinstance(choices, tuple):
+                    print("TUPLE")
                     game_state = action_generator.game_state
                     if game_state.phase == game_state.mode.roll_phase() and random.random() < 0.8:
                         choices = tuple(c for c in choices if c is not ActionType.END_ROUND)
                     choice = random.choice(choices)
-                    # print("tuple", choice)
+                    print(choice)
                     action_generator = action_generator.choose(choice)
                 elif isinstance(choices, AbstractDice):
                     optional_choice = action_generator.dice_available().smart_selection(
@@ -166,12 +168,12 @@ class MCTSAgent(PlayerAgent):
                                         + f"{action_generator.dice_available()} at game_state:"
                                         + f"{action_generator.game_state}")
                     choice = optional_choice
-                    # print("abstract", choice)
                     action_generator = action_generator.choose(choice)
                 elif isinstance(choices, Cards):
+                    print("CARDS")
                     _, choice = choices.pick_random(random.randint(0, choices.num_cards()))
-                    # print("cards", choice)
                     action_generator = action_generator.choose(choice)
+                    print(choice)
                 elif isinstance(choices, ActualDice):
                     game_state = action_generator.game_state
                     wanted_elems = game_state.get_player(
@@ -185,14 +187,12 @@ class MCTSAgent(PlayerAgent):
                         ))
                     else:
                         _, choice = choices.pick_random_dice(random.randint(0, choices.num_dice()))
-                    # print("actual", choice)
                     action_generator = action_generator.choose(choice)
                 else:
                     raise NotImplementedError
         except Exception as e:
+            print(choice)
             print(f"Error with action_generator: {action_generator}")
             raise e
-        action = action_generator.generate_action()
-        # print(action)
-        return action
+        return action_generator.generate_action()
     
