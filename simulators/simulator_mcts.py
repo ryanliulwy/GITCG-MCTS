@@ -4,7 +4,8 @@ This file runs 1000 games with the default random agent to test the speed of the
 
 from dgisim import LinearEnv, ActionGenerator, GameState, Pid, ActualDice, AbstractDice, Cards, PlayerAgent
 from dgisim.agents import RandomAgent
-from mcts_agent import MCTSAgent
+from custom_agents.mcts_agent import MCTSAgent
+from mcts_offline_agent import OfflineAgent
 import random, time
 
 env = LinearEnv()
