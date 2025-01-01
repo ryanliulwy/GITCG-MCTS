@@ -3,7 +3,7 @@ This file contains the MCTS implementation of a PlayerAgent
 """
 from dgisim import PlayerAgent, GameState, Pid, PlayerAction, ActionGenerator, ActionType, Element, Cards, ActualDice, AbstractDice
 from math import sqrt, log
-import copy, random
+import copy, random, json
 
 class Node:
     def __init__(self, game_state: GameState, actions: list[PlayerAction], pid, parent = None) -> None:
@@ -19,55 +19,53 @@ class Node:
         self.tried_actions = copy.copy(actions) # immutable, used to be untried_actions
         self.is_terminal = game_state.game_end() # gamestate is simulator
 
-def same_node(a: Node, b: Node):
-    # examine only the generalized game state
-    # independent of the history
-    a_state = a.state.get_player(a.pid)
-    b_state = b.state.get_player(b.pid)
-
-    # available dice → number of dice (potential: check effective dice)
-    if (sum(a_state.dice.readonly_dice_collection_ordered().values()) != sum(b_state.dice.readonly_dice_collection_ordered().values())): return False
-    # available cards → number of cards
-    if (a_state.hand_cards.num_cards() != b_state.hand_cards.num_cards()): return False
-    # TODO --------- check one character or all?
-    a_active_char = a_state.characters.get_active_character()
-    b_active_char = b_state.characters.get_active_character()
-    if (a_active_char == None and b_active_char == None): return True
-    elif (a_active_char == None): return False
-    elif (b_active_char == None): return False
-    # active character name
-    if (a_active_char != b_active_char): return False
-    # energy tiers (empty, partial, full)
-    a_energy_tier = a_active_char.energy / a_active_char.max_energy
-    b_energy_tier = b_active_char.energy / b_active_char.max_energy
-    if (a_energy_tier == 0):
-        if not (b_energy_tier == 0): return False
-    elif (a_energy_tier == 1):
-        if not (b_energy_tier == 1): return False
-    else:
-        if not (b_energy_tier > 0 and b_energy_tier < 1): return False
-    # HP buckets (high > 70%, medium 40-70%, low < 40%)
-    a_hp_bucket = a_active_char.hp / a_active_char.max_hp
-    b_hp_bucket = b_active_char.hp / b_active_char.max_hp
-    if (a_hp_bucket > 0.7): 
-        if not (b_hp_bucket > 0.7): return False
-    elif (a_hp_bucket >= 0.4):
-        if not (b_hp_bucket >= 0.4 and b_hp_bucket <= 0.7): return False
-    else:
-        if not (b_hp_bucket < 0.4): return False
+class CompressedNode:
+    # local vars: 
+    # num_dice, num_cards, active_char, energy_tier, hp_bucket
 
     # TODO: below
+    # --------- check one character or all?
     # card “types”? (offensive, defensive, etc…?)
     # only represent opposing character “roles”? (damage, support, etc.)
     # ignore less impactful status effects (like “full”)
 
-    return True
+    def __init__(self, node: Node):
+        # examine only the generalized game state
+        # independent of the history
+        state = node.state.get_player(node.pid)
+
+        # available dice → number of dice (potential: check effective dice)
+        self.num_dice = sum(state.dice.readonly_dice_collection_ordered().values())
+        # available cards → number of cards
+        self.num_cards = state.hand_cards.num_cards()
+        # active character
+        self.active_char = state.characters.get_active_character() # sometimes None
+        if (self.active_char != None):
+            # energy tiers (empty, partial, full)
+            energy_percentage = self.active_char.energy / self.active_char.max_energy
+            if (energy_percentage == 0): self.energy_tier = "empty"
+            elif (energy_percentage == 1): self.energy_tier = "full"
+            else: self.energy_tier = "partial"
+            # HP buckets (high > 70%, medium 40-70%, low < 40%)
+            hp_percentage = self.active_char.hp / self.active_char.max_hp
+            if (hp_percentage > 0.7): self.hp_bucket = "high"
+            elif (hp_percentage >= 0.4): self.hp_bucket = "medium"
+            else: self.hp_bucket = "low"
+
+    def __eq__(self, other):
+        if (self.num_dice != other.num_dice): return False
+        if (self.num_cards != other.num_cards): return False
+        if (self.active_char != other.active_char): return False
+        if (self.energy_tier != other.energy_tier): return False
+        if (self.hp_bucket != other.hp_bucket): return False
+        return True
 
 class OfflineAgent(PlayerAgent):
     BRANCH_LIMIT = 8
     ITERATION_BUDGET = 100
     
-    def __init__(self, ) -> None:
+    def __init__(self, TRAIN_NAME:str = None) -> None:
+        self.TRAIN_NAME = TRAIN_NAME
         pass
 
     # mcts_search() 

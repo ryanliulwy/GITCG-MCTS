@@ -6,20 +6,14 @@ from dgisim import GameState, Pid
 from dgisim.agents import RandomAgent
 # from custom_agents.mcts_agent import MCTSAgent
 from mcts_offline_agent import OfflineAgent
-import random, time, json
+import random, time
 
 from deck_aoe import deck1 as deckAOE # buggy
-from deck_single import deck as deckSingle
+from deck_single import deck as deckSingle # untested
 from deck_default import deck1 as deckDefault
 
 agRand = RandomAgent()
 agMCTS = OfflineAgent()
-
-# opening save file for training
-# TRAIN_NAME = 'default'
-# with open('offline_save_file_' + TRAIN_NAME + '.txt') as f: 
-#     data = f.read() 
-# action_ucb_table = json.loads(data) 
 
 start = time.time()
 
