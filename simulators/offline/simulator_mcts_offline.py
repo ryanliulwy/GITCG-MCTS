@@ -12,8 +12,10 @@ from deck_aoe import deck1 as deckAOE # buggy
 from deck_single import deck as deckSingle # untested
 from deck_default import deck1 as deckDefault
 
+TRAIN_NAME = 'default'
+
 agRand = RandomAgent()
-agMCTS = OfflineAgent()
+agMCTS = OfflineAgent(TRAIN_NAME)
 
 start = time.time()
 

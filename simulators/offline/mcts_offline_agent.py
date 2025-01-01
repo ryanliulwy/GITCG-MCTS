@@ -3,7 +3,7 @@ This file contains the MCTS implementation of a PlayerAgent
 """
 from dgisim import PlayerAgent, GameState, Pid, PlayerAction, ActionGenerator, ActionType, Element, Cards, ActualDice, AbstractDice
 from math import sqrt, log
-import copy, random, json
+import copy, random, json, os
 
 class Node:
     def __init__(self, game_state: GameState, actions: list[PlayerAction], pid, parent = None) -> None:
@@ -64,10 +64,21 @@ class OfflineAgent(PlayerAgent):
     BRANCH_LIMIT = 8
     ITERATION_BUDGET = 100
     
-    def __init__(self, TRAIN_NAME:str = None) -> None:
+    def __init__(self, TRAIN_NAME: str = None) -> None:
         self.TRAIN_NAME = TRAIN_NAME
-        pass
-
+        # opening save file for training
+        file_name = 'offline_save_file_' + TRAIN_NAME + '.txt'
+        # create the file if it doesn't exist
+        if not os.path.exists(file_name):
+            with open(file_name, 'a') as f:
+                pass  
+        # read the file 
+        with open(file_name, 'r') as f:
+            data = f.read().strip()
+            self.offline_dict = json.loads(data) if data else {}  # Handle empty file gracefully
+        
+        # offline_dict is { gamestate (compressednode) : action }
+        
     # mcts_search() 
     def choose_action(self, history: list[GameState], pid: Pid) -> PlayerAction:
         # moving intialization here
