@@ -6,18 +6,62 @@ from math import sqrt, log
 import copy, random
 
 class Node:
-    def __init__(self, game_state: GameState, actions: list[PlayerAction], parent = None) -> None:
+    def __init__(self, game_state: GameState, actions: list[PlayerAction], pid, parent = None) -> None:
         # basic mcts
         self.state = copy.copy(game_state) # immutable
         self.num_wins = 0
         self.num_visits = 0
         self.children = [] # (action, child node)
         self.parent = parent
+        self.pid = pid
 
         # modify for tcg
         self.tried_actions = copy.copy(actions) # immutable, used to be untried_actions
         self.is_terminal = game_state.game_end() # gamestate is simulator
 
+def same_node(a: Node, b: Node):
+    # examine only the generalized game state
+    # independent of the history
+    a_state = a.state.get_player(a.pid)
+    b_state = b.state.get_player(b.pid)
+
+    # available dice → number of dice (potential: check effective dice)
+    if (sum(a_state.dice.readonly_dice_collection_ordered().values()) != sum(b_state.dice.readonly_dice_collection_ordered().values())): return False
+    # available cards → number of cards
+    if (a_state.hand_cards.num_cards() != b_state.hand_cards.num_cards()): return False
+    # TODO --------- check one character or all?
+    a_active_char = a_state.characters.get_active_character()
+    b_active_char = b_state.characters.get_active_character()
+    if (a_active_char == None and b_active_char == None): return True
+    elif (a_active_char == None): return False
+    elif (b_active_char == None): return False
+    # active character name
+    if (a_active_char != b_active_char): return False
+    # energy tiers (empty, partial, full)
+    a_energy_tier = a_active_char.energy / a_active_char.max_energy
+    b_energy_tier = b_active_char.energy / b_active_char.max_energy
+    if (a_energy_tier == 0):
+        if not (b_energy_tier == 0): return False
+    elif (a_energy_tier == 1):
+        if not (b_energy_tier == 1): return False
+    else:
+        if not (b_energy_tier > 0 and b_energy_tier < 1): return False
+    # HP buckets (high > 70%, medium 40-70%, low < 40%)
+    a_hp_bucket = a_active_char.hp / a_active_char.max_hp
+    b_hp_bucket = b_active_char.hp / b_active_char.max_hp
+    if (a_hp_bucket > 0.7): 
+        if not (b_hp_bucket > 0.7): return False
+    elif (a_hp_bucket >= 0.4):
+        if not (b_hp_bucket >= 0.4 and b_hp_bucket <= 0.7): return False
+    else:
+        if not (b_hp_bucket < 0.4): return False
+
+    # TODO: below
+    # card “types”? (offensive, defensive, etc…?)
+    # only represent opposing character “roles”? (damage, support, etc.)
+    # ignore less impactful status effects (like “full”)
+
+    return True
 
 class OfflineAgent(PlayerAgent):
     BRANCH_LIMIT = 8
@@ -31,7 +75,7 @@ class OfflineAgent(PlayerAgent):
         # moving intialization here
         self.game_state = history[-1]
         self.pid = pid
-        self.root = Node(history[-1], [])
+        self.root = Node(history[-1], [], pid)
 
         iters = 0
         # mcts loop
@@ -69,7 +113,7 @@ class OfflineAgent(PlayerAgent):
         self.game_state = copy.copy(node.state)
         self.game_state.action_step(node.state.waiting_for(), action) 
         # note: should it be taking an action step?
-        child_node = Node(self.game_state, [], node)
+        child_node = Node(self.game_state, [], self.pid, node)
         node.children.append((action, child_node))
         return child_node
     
@@ -91,7 +135,7 @@ class OfflineAgent(PlayerAgent):
                 best_action = child[0]
                 best_child_node = child[1]
         print()
-        print(node.state)
+        # print(node.state)
         print(action_ucb_table)
         print()
         return best_child_node, best_action, action_ucb_table

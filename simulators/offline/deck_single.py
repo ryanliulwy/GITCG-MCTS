@@ -11,7 +11,7 @@ deck = FrozenDeck(
         card.PoundingSurprise: 2, # resource
 
         # Support Cards
-        card.Katheryne: 2, # utility
+        card.Paimon: 2, # utility - removing katheryne (unavailable)
         card.Vanarana: 2, # resource
         card.ParametricTransformer: 2, # resource
 
