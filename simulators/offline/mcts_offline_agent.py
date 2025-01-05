@@ -1,10 +1,11 @@
 """
 This file contains the MCTS implementation of a PlayerAgent
 """
-from dgisim import PlayerAgent, GameState, Pid, PlayerAction, ActionGenerator, ActionType, Element, Cards, ActualDice, AbstractDice
+from dgisim import PlayerAgent, GameState, Pid, PlayerAction, Instruction, ActionGenerator, ActionType, Element, Cards, ActualDice, AbstractDice
+from dgisim import CharacterSelectAction, EndRoundAction, CardsSelectAction
 from math import sqrt, log
 import copy, random, json, os
-
+    
 class Node:
     def __init__(self, game_state: GameState, actions: list[PlayerAction], pid, parent = None) -> None:
         # basic mcts
@@ -51,6 +52,9 @@ class CompressedNode:
             if (hp_percentage > 0.7): self.hp_bucket = "high"
             elif (hp_percentage >= 0.4): self.hp_bucket = "medium"
             else: self.hp_bucket = "low"
+        else:
+            self.energy_tier = None
+            self.hp_bucket = None
 
     def __eq__(self, other):
         if (self.num_dice != other.num_dice): return False
@@ -60,6 +64,41 @@ class CompressedNode:
         if (self.hp_bucket != other.hp_bucket): return False
         return True
 
+    def __hash__(self):
+        # hash all __eq__ attributes
+        return hash((self.num_dice, self.num_cards, self.active_char, self.energy_tier, self.hp_bucket))
+    
+    def toJSON(self):
+        return json.dumps(
+            self,
+            default=lambda o: o.__dict__, 
+            sort_keys=False,
+            indent=4)
+    
+# custom JSON encoder
+# https://dottore-genius-invokation-tcg-simulator.readthedocs.io/en/stable/action/player-action-n-instruction.html
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        print(type(obj))
+        if isinstance(obj, CharacterSelectAction):
+            return {
+                "action_type": "CharacterSelectAction",
+                "char_id": obj.char_id,
+                # "character": get_character(obj.char_id).name(),
+
+            }
+        if isinstance(obj, EndRoundAction):
+            return {
+                "action_type": "EndRoundAction"
+            }
+        if isinstance(obj, CardsSelectAction):
+            return {
+                "action_type": "CardsSelectAction",
+                "selected_cards": {card.name(): count for card, count in obj.selected_cards._cards.items()},
+            }
+        return super().default(obj)
+
+
 class OfflineAgent(PlayerAgent):
     BRANCH_LIMIT = 8
     ITERATION_BUDGET = 100
@@ -67,16 +106,18 @@ class OfflineAgent(PlayerAgent):
     def __init__(self, TRAIN_NAME: str = None) -> None:
         self.TRAIN_NAME = TRAIN_NAME
         # opening save file for training
-        file_name = 'offline_save_file_' + TRAIN_NAME + '.txt'
+        self.SAVE_FILE = 'offline_save_file_' + TRAIN_NAME + '.txt'
         # create the file if it doesn't exist
-        if not os.path.exists(file_name):
-            with open(file_name, 'a') as f:
+        if not os.path.exists(self.SAVE_FILE):
+            with open(self.SAVE_FILE, 'a') as f:
                 pass  
         # read the file 
-        with open(file_name, 'r') as f:
-            data = f.read().strip()
-            self.offline_dict = json.loads(data) if data else {}  # Handle empty file gracefully
-        
+        try:
+            with open(self.SAVE_FILE, 'r') as f:
+                data = f.read().strip()
+                self.offline_dict = json.loads(data) if data else {}  
+        except:
+            self.offline_dict = {}
         # offline_dict is { gamestate (compressednode) : action }
         
     # mcts_search() 
@@ -95,8 +136,15 @@ class OfflineAgent(PlayerAgent):
             node = self.select(self.root)
             winner = self.rollout(node)
             self.backpropagate(node, winner)
+            print (self.offline_dict)
+            # with open(self.SAVE_FILE, 'w') as f:
+                # json.dump(self.offline_dict, f)
+            # print(CompressedNode(node).toJSON())
             iters += 1
         print()
+
+        # write to offline after 1 iteration cycle
+
         
         # return the best action, and the table of actions and their win values 
         _, action, _ = self.best_child(self.root, 0)
@@ -112,7 +160,14 @@ class OfflineAgent(PlayerAgent):
                 # pretend they don't exist
                 return self.expand(node)
             else:
-                node = self.best_child(node, c=1)[0]
+                node, best_action, _ = self.best_child(node, c=1)
+                self.offline_dict[CompressedNode(node).toJSON()] = best_action # update for offline
+                
+                print("--best action before--")
+                print(best_action)
+                json_str = json.dumps(best_action, cls=CustomJSONEncoder)
+                print("--boop--")
+                print(json_str)
         return node
 
     def expand(self, node: Node):
