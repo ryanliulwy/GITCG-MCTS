@@ -2,7 +2,7 @@
 This file contains the MCTS implementation of a PlayerAgent
 """
 from dgisim import PlayerAgent, GameState, Pid, PlayerAction, Instruction, ActionGenerator, ActionType, Element, Cards, ActualDice, AbstractDice
-from dgisim import CharacterSelectAction, EndRoundAction, CardsSelectAction
+from dgisim import CardAction, CardsSelectAction, CharacterSelectAction, DeathSwapAction, DiceSelectAction, ElementalTuningAction, EndRoundAction, SkillAction, SwapAction
 from math import sqrt, log
 import copy, random, json, os
     
@@ -80,21 +80,50 @@ class CompressedNode:
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         print(type(obj))
+        if isinstance(obj, CardAction):
+            return {
+                "action_type": "CardAction",
+                "card": obj.card.name()
+            }
+        if isinstance(obj, CardsSelectAction):
+            return {
+                "action_type": "CardsSelectAction",
+                "selected_cards": {card.name(): count for card, count in obj.selected_cards._cards.items()}
+            }
         if isinstance(obj, CharacterSelectAction):
             return {
                 "action_type": "CharacterSelectAction",
-                "char_id": obj.char_id,
+                "char_id": obj.char_id
                 # "character": get_character(obj.char_id).name(),
-
+            }
+        if isinstance(obj, DeathSwapAction):
+            return {
+                "action_type": "DeathSwapAction",
+                "char_id": obj.char_id
+            }
+        if isinstance(obj, DiceSelectAction):
+            return {
+                "action_type": "DiceSelectAction"
+                #"selected_dice": {element: count for element, count in obj.selected_dice.dice_ordered.items()}
+            }
+        if isinstance(obj, ElementalTuningAction):
+            return {
+                "action_type": "ElementalTuningAction",
+                "card": obj.card.name()
             }
         if isinstance(obj, EndRoundAction):
             return {
                 "action_type": "EndRoundAction"
             }
-        if isinstance(obj, CardsSelectAction):
+        if isinstance(obj, SkillAction):
             return {
-                "action_type": "CardsSelectAction",
-                "selected_cards": {card.name(): count for card, count in obj.selected_cards._cards.items()},
+                "action_type": "SkillAction",
+                "skill": obj.skill
+            }
+        if isinstance(obj, SwapAction):
+            return {
+                "action_type": "SwapAction",
+                "char_id": obj.char_id
             }
         return super().default(obj)
 
