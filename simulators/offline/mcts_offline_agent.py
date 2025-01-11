@@ -40,7 +40,7 @@ class CompressedNode:
         # available cards → number of cards
         self.num_cards = state.hand_cards.num_cards()
         # active character
-        self.active_char = state.characters.get_active_character() # sometimes None
+        self.active_char = state.characters.get_active_character() # sometimes None 
         if (self.active_char != None):
             # energy tiers (empty, partial, full)
             energy_percentage = self.active_char.energy / self.active_char.max_energy
@@ -52,6 +52,8 @@ class CompressedNode:
             if (hp_percentage > 0.7): self.hp_bucket = "high"
             elif (hp_percentage >= 0.4): self.hp_bucket = "medium"
             else: self.hp_bucket = "low"
+            # set character to name only (not object)
+            self.active_char = self.active_char.name() 
         else:
             self.energy_tier = None
             self.hp_bucket = None
@@ -72,14 +74,20 @@ class CompressedNode:
         return json.dumps(
             self,
             default=lambda o: o.__dict__, 
+            sort_keys=False)
+    
+    def toJSONPretty(self):
+        return json.dumps(
+            self,
+            default=lambda o: o.__dict__, 
             sort_keys=False,
             indent=4)
-    
+
 # custom JSON encoder
 # https://dottore-genius-invokation-tcg-simulator.readthedocs.io/en/stable/action/player-action-n-instruction.html
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        print(type(obj))
+        # print(type(obj))
         if isinstance(obj, CardAction):
             return {
                 "action_type": "CardAction",
@@ -118,7 +126,10 @@ class CustomJSONEncoder(json.JSONEncoder):
         if isinstance(obj, SkillAction):
             return {
                 "action_type": "SkillAction",
-                "skill": obj.skill
+                # "skill": obj.skill 
+                # SkillAction(skill=SKILL2, instruction=DiceOnlyInstruction(dice={ELECTRO: 2, OMNI: 1}))
+                # TypeError: Object of type CharacterSkill is not JSON serializable
+
             }
         if isinstance(obj, SwapAction):
             return {
@@ -141,13 +152,30 @@ class OfflineAgent(PlayerAgent):
             with open(self.SAVE_FILE, 'a') as f:
                 pass  
         # read the file 
+        self.offline_dict = {}
         try:
             with open(self.SAVE_FILE, 'r') as f:
+                # TODO debug this section
                 data = f.read().strip()
-                self.offline_dict = json.loads(data) if data else {}  
-        except:
+                print("dataaa", data)
+                print("ooo", json.loads(data))
+                for k, v in data.items():
+                    print(json.loads(k), "----", json.loads(v))
+                self.offline_dict = {json.loads(k): json.loads(v) for k, v in data.items()} if data else {}  
+                # self.offline_dict = json.loads(data) if data else {}  
+                print("huh??")
+        except json.JSONDecodeError as e:
+            print(f"ERROR: JSON decode error: {e}")
             self.offline_dict = {}
+        except Exception as e:
+            print(f"ERROR: unexpected exception: {e}")
+            self.offline_dict = {}
+        except:
+            print("ERROR: exception")
+            self.offline_dict = {}
+        print(self.offline_dict)
         # offline_dict is { gamestate (compressednode) : action }
+
         
     # mcts_search() 
     def choose_action(self, history: list[GameState], pid: Pid) -> PlayerAction:
@@ -159,21 +187,24 @@ class OfflineAgent(PlayerAgent):
         iters = 0
         # mcts loop
         while (iters < self.ITERATION_BUDGET):
-            if ((iters + 1) % 100 == 0):
+            if ((iters + 1) % 50 == 0):
                 print("\riters/budget: {}/{}".format(iters + 1, self.ITERATION_BUDGET), end="")
             # select a node, rollout, and backpropagate
             node = self.select(self.root)
             winner = self.rollout(node)
             self.backpropagate(node, winner)
-            print (self.offline_dict)
-            # with open(self.SAVE_FILE, 'w') as f:
-                # json.dump(self.offline_dict, f)
-            # print(CompressedNode(node).toJSON())
             iters += 1
         print()
 
         # write to offline after 1 iteration cycle
 
+        # print()
+        print("SAVING...")
+        # print (self.offline_dict)
+        with open(self.SAVE_FILE, 'w') as f:
+            f.write(json.dumps(self.offline_dict, sort_keys=False, indent=4))
+            # json.dump(self.offline_dict, f)
+        # print()
         
         # return the best action, and the table of actions and their win values 
         _, action, _ = self.best_child(self.root, 0)
@@ -190,14 +221,12 @@ class OfflineAgent(PlayerAgent):
                 return self.expand(node)
             else:
                 node, best_action, _ = self.best_child(node, c=1)
-                self.offline_dict[CompressedNode(node).toJSON()] = best_action # update for offline
                 
-                print("--best action before--")
-                print(best_action)
-                json_str = json.dumps(best_action, cls=CustomJSONEncoder)
-                print("--boop--")
-                print(json_str)
+                compressed_node = CompressedNode(node).toJSON()
+                self.offline_dict[compressed_node] = json.dumps(best_action, cls=CustomJSONEncoder) # update for offline
+                # self.offline_dict[CompressedNode(node).toJSON()] = best_action # update for offline
         return node
+
 
     def expand(self, node: Node):
         # duplicates allowed
@@ -227,10 +256,10 @@ class OfflineAgent(PlayerAgent):
                 best_ucb = action_ucb_table[child[0]]
                 best_action = child[0]
                 best_child_node = child[1]
-        print()
+        # print()
         # print(node.state)
-        print(action_ucb_table)
-        print()
+        # print(action_ucb_table)
+        # print()
         return best_child_node, best_action, action_ucb_table
 
     def rollout(self, node: Node):
