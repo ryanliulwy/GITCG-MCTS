@@ -159,10 +159,8 @@ class OfflineAgent(PlayerAgent):
                 data = f.read().strip()
                 print("dataaa", data)
                 print("ooo", json.loads(data))
-                for k, v in data.items():
-                    print(json.loads(k), "----", json.loads(v))
-                self.offline_dict = {json.loads(k): json.loads(v) for k, v in data.items()} if data else {}  
-                # self.offline_dict = json.loads(data) if data else {}  
+                # self.offline_dict = {json.loads(k): json.loads(v) for k, v in data.items()} if data else {}  
+                self.offline_dict = json.loads(data) if data else {}  
                 print("huh??")
         except json.JSONDecodeError as e:
             print(f"ERROR: JSON decode error: {e}")
@@ -222,8 +220,9 @@ class OfflineAgent(PlayerAgent):
             else:
                 node, best_action, _ = self.best_child(node, c=1)
                 
-                compressed_node = CompressedNode(node).toJSON()
-                self.offline_dict[compressed_node] = json.dumps(best_action, cls=CustomJSONEncoder) # update for offline
+                compressed_node = repr(CompressedNode(node).toJSON())
+                compressed_node = compressed_node[1:-1]
+                self.offline_dict[compressed_node.replace('"', "'")] = json.dumps(best_action, cls=CustomJSONEncoder).replace('"', "'")  # update for offline
                 # self.offline_dict[CompressedNode(node).toJSON()] = best_action # update for offline
         return node
 
