@@ -8,15 +8,26 @@ from custom_agents.mcts_agent import MCTSAgent
 # from simulators.offline.mcts_offline_agent import OfflineAgent
 import random, time
 from offline.deck_default import deck1 as deckDefault
+import wandb
 
 agRand = RandomAgent()
 agMCTS = MCTSAgent()
 
-start = time.time()
+wandb.init(project="dgisim-regular-mcts", name=f"random_vs_mcts_50")
 
 p1_wins = 0
 p2_wins = 0
-total_games = 1
+total_games = 50
+
+action_counts = {} # action tracker
+
+wandb.config.update({
+    "total_games": total_games,
+    "p1_agent": "RandomAgent",
+    "p2_agent": "MCTSAgent"
+})
+
+start = time.time()
 for i in range(total_games):
     game_state = GameState.from_decks(
         mode=dg.AllOmniMode(),
@@ -31,13 +42,29 @@ for i in range(total_games):
             current_player = game_state.waiting_for()
             action = agRand.choose_action(history, current_player)
             game_state = game_state.action_step(current_player, action)
-            print(current_player, action)
+            # print(current_player, action)
+            # tracking
+            action_type = action.__class__.__name__  # e.g., "CardAction", "SkillAction"
+            key = f"{current_player} {action_type}"
+            if key in action_counts:
+                action_counts[key] += 1  
+            else:
+                action_counts[key] = 1
         elif game_state.waiting_for() is Pid.P2: # MCTS goes second
             current_player = game_state.waiting_for()
             action = agMCTS.choose_action(history, current_player)
             game_state = game_state.action_step(current_player, action)
-            print(current_player, action)
+            # print(current_player, action)
+            # tracking
+            action_type = action.__class__.__name__  # e.g., "CardAction", "SkillAction"
+            key = f"{current_player} {action_type}"
+            if key in action_counts:
+                action_counts[key] += 1  
+            else:
+                action_counts[key] = 1
+            
         history.append(game_state)
+
     print("Game #%d complete" % i)
     print(game_state.get_winner())
     if game_state.get_winner() == Pid.P1:
@@ -45,8 +72,24 @@ for i in range(total_games):
     elif game_state.get_winner() == Pid.P2:
         p2_wins += 1
 
+
 end = time.time()
-print(end - start)
+print(end - start, " seconds taken.")
 print("P1 wins:", p1_wins)
 print("P2 wins:", p2_wins)
 print("Total games:", total_games)
+
+
+wandb.log({
+    "total_duration": end - start,
+    "final_p1_wins": p1_wins,
+    "final_p2_wins": p2_wins,
+    "final_p1_win_rate": p1_wins / total_games,
+    "final_p2_win_rate": p2_wins / total_games
+})
+
+wandb.log(action_counts)
+for action, count in action_counts.items():
+    print(f"{action}: {count} times")
+
+wandb.finish()
