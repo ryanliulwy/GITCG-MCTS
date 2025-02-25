@@ -35,11 +35,14 @@ class CompressedNode:
         # independent of the history
         state = node.state.get_player(node.pid)
 
+        # current game phase
         self.game_phase = node.state.phase.dict_str()
         # available dice → number of dice (potential: check effective dice)
         self.num_dice = sum(state.dice.readonly_dice_collection_ordered().values())
         # available cards → number of cards
         self.num_cards = state.hand_cards.num_cards()
+        # ids of alive characters TODO
+        # self.alive_characters = [c.get_id() for c in state.characters.get_alive_characters()]
         # active character
         self.active_char = state.characters.get_active_character() # sometimes None 
         if (self.active_char != None):
@@ -63,6 +66,7 @@ class CompressedNode:
         if (self.game_phase != other.game_phase): return False
         if (self.num_dice != other.num_dice): return False
         if (self.num_cards != other.num_cards): return False
+        # if (self.alive_characters != other.alive_characters): return False
         if (self.active_char != other.active_char): return False
         if (self.energy_tier != other.energy_tier): return False
         if (self.hp_bucket != other.hp_bucket): return False
@@ -224,12 +228,16 @@ class OfflineAgent(PlayerAgent):
                 if compressed_node.replace('"', "'") in self.offline_dict: # best action exists already
                     action = self.offline_dict[compressed_node.replace('"', "'")] 
                     game_state = copy.copy(node.state)
+                    # if invalid action, pick random
+                    if action not in game_state.action_generator(game_state.waiting_for()).choices():
+                        action = self._action_generator_chooser(node.state.action_generator(node.state.waiting_for()))
+                        print("randomized action due to invalid best action from mcts")
                     #print("game state:", game_state)
                     #print("node.state:", node.state)
                     #print("game phase:", game_state.phase.dict_str())
                     game_state.action_step(node.state.waiting_for(), action) 
                     node = Node(game_state, [], self.pid, node)
-                    print("used dict! :3")
+                    # print("used dict! :3")
                 else:
                     node, best_action, _ = self.best_child(node, c=1)
                     # self.last_choice = 'best child'
