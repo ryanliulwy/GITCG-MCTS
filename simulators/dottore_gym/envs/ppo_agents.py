@@ -8,20 +8,66 @@ from stable_baselines3.common.env_util import make_vec_env
 from gymnasium.spaces.utils import flatten_space, flatten
 import gymnasium as gym
 
+import numpy as np
+from gymnasium import spaces
+
 class PettingZooSB3Wrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
-        self.observations = flatten_space(env.observations[self.agents[0]])
-        self.action_space = env.action_space[self.agents[0]]
+        
+        # Get the size of the flattened observation
+        self.observation_size = self._get_obs_size()
+        
+        # Define a Box space with the correct shape
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(self.observation_size,), dtype=np.float32
+        )
+        
+        self.action_space = env.action_space()  # Ensure this works
+
+    def _get_obs_size(self):
+        """Calculate the size of the flattened observation space"""
+        return 27  # 10 (character) + 1 (dice) + 5 (cards) + 1 (declared_end) + 8 (action_mask)
+
+    def _flatten_observation(self, obs):
+        """Flatten nested dictionary into a structured 1D numpy array."""
+        flat_obs = []
+
+        # Character attributes (10 values)
+        char = obs["Kaeya"]
+        flat_obs.append(char["max_hp"])
+        flat_obs.append(char["hp"])
+        flat_obs.append(char["max_energy"])
+        flat_obs.append(char["energy"])
+        flat_obs.append(char["atk_permanent"])
+        flat_obs.append(char["atk_discount"])
+        flat_obs.extend(char["actions"])  # Action IDs (3 values)
+        flat_obs.append(int(bool(char["artifact"])))  # Encode artifact as binary
+        flat_obs.append(int(bool(char["weapon"])))  # Encode weapon as binary
+        flat_obs.append(char["full"])  # 1 if full, 0 otherwise
+
+        # Dice count (1 value)
+        flat_obs.append(obs["dice"])
+
+        # Cards in hand (5 values, already integers)
+        flat_obs.extend(obs["cards"])
+
+        # Declared end flag (1 value)
+        flat_obs.append(obs["declared_end"])
+
+        # Action mask (8 values)
+        flat_obs.extend(obs["action_mask"])
+
+        return np.array(flat_obs, dtype=np.float32)
 
     def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
-        return flatten(self.env.observations[self.agents[0]], obs[self.agents[0]])
+        obs = self.env.reset(**kwargs)[0]
+        return self._flatten_observation(obs[self.env.agents[0]]), self.env.reset(**kwargs)[1]
 
     def step(self, action):
         obs, reward, done, truncated, info = self.env.step(action)
-        return flatten(self.env.observations[self.agents[0]], obs[self.agents[0]]), reward, done, truncated, info
-    
+        return self._flatten_observation(obs[self.env.agents[0]]), reward, done, truncated, info  
+
 class MaskedPolicy(nn.Module):
     def __init__(self, observation_space, action_space, features_dim=256):
         super().__init__()
@@ -56,9 +102,10 @@ class MaskedPPO(PPO):
         action = torch.argmax(action_probs, dim=-1) if deterministic else torch.multinomial(action_probs, 1)
         return action
 
-env = GITCGDoubleMiniGymEnv()
-env = PettingZooSB3Wrapper(env)
-vec_env = make_vec_env(lambda: env, n_envs=4)
+def make_env():
+    return PettingZooSB3Wrapper(GITCGDoubleMiniGymEnv())
 
-model = MaskedPPO("MlpPolicy", vec_env, verbose=1)
+vec_env = make_vec_env(make_env, n_envs=4)
+
+model = PPO("MlpPolicy", vec_env, verbose=1)
 model.learn(total_timesteps=100000)

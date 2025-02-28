@@ -38,11 +38,10 @@ class GITCGDoubleMiniGymEnv(gym.Env):
         
         self.reset()
     
-    def observation_space(self, agent): 
+    def observation_space(self): 
         return {
             agent: spaces.Dict({
-                "character": spaces.Dict({
-                    "name": spaces.Text(10),
+                "Kaeya": spaces.Dict({
                     "max_hp": spaces.Discrete(10),
                     "hp": spaces.Discrete(10),
                     "max_energy": spaces.Discrete(2),
@@ -64,6 +63,7 @@ class GITCGDoubleMiniGymEnv(gym.Env):
             })
             for agent in self.possible_agents
         }
+    
 
     def action_space(self):
         return spaces.Discrete(len(self.actions))
@@ -71,8 +71,7 @@ class GITCGDoubleMiniGymEnv(gym.Env):
     def reset(self, seed=None, options=None):
         self.observations = {
             agent: {
-                "character": {
-                    "name": "Kaeya",
+                "Kaeya": {
                     "max_hp": 10,
                     "hp": 10,
                     "max_energy": 2,
@@ -102,27 +101,28 @@ class GITCGDoubleMiniGymEnv(gym.Env):
             }
             for agent in self.possible_agents
         }
-        # self.num_moves = 0
-        # self._agent_selector = agent_selector(self.agents)
-        # self.agent_selection = self._agent_selector.next()
+        self.num_moves = 0
+        self._agent_selector = agent_selector(self.agents)
+        self.agent_selection = self._agent_selector.next()
+        self.done = False
         return self.observations, {}
 
     def get_action_mask(self, agent):
         # valid - 1, invalid - 0
         mask = [0] * len(self.actions)
-        for name in self.actions.keys():
-            action = self.actions[name]
+        for action in self.actions.keys():
+            value = self.actions[action] 
             if self.observations[agent]["declared_end"] and action != "end_round_action":
                 continue # need to end round after end
             if "card_type" in action and self.word_to_id[action] not in self.observations[agent]["cards"]:
                 continue  # card not in hand
-            if action["dice_cost"] - self.observations[agent]["atk_discount"] > self.observation_space[agent]["dice"]:
+            if value["dice_cost"] - self.observations[agent]["Kaeya"]["atk_discount"] > self.observations[agent]["dice"]:
                 continue  # not enough dice
-            if action.__contains__("burst") and self.observations[agent]["max_energy"] != self.observation_space[agent]["energy"]:
+            if action.__contains__("burst") and self.observations[agent]["Kaeya"]["max_energy"] != self.observations[agent]["Kaeya"]["energy"]:
                 continue # not enough energy
-            if "hp" in action and self.observations[agent]["full"]:
+            if "hp" in action and self.observations[agent]["Kaeya"]["full"]:
                 continue # full, can't eat more
-            mask[name] = 1 # valid otherwise
+            mask[list(self.actions).index(action)] = 1 # valid otherwise
         return mask
 
     
@@ -131,10 +131,11 @@ class GITCGDoubleMiniGymEnv(gym.Env):
         other_agent = "player_0" if agent == "player_1" else "player_1"
         reward = 0
         total_dmg = 0
+        action = self.id_to_word[action+1]
 
         # check if action is valid?
-        self.observations[agent] = self.get_action_mask(agent)
-        if not (self.observations[agent][list(self.actions).index(action)]):
+        print(self.get_action_mask(agent), action)
+        if self.get_action_mask(agent)[list(self.actions).index(action)] == 0:
             reward = -100 # invalid
             action = "end_round_action"
         
@@ -143,53 +144,53 @@ class GITCGDoubleMiniGymEnv(gym.Env):
             self.observations[agent]["declared_end"] = True
         elif "card_type" not in self.actions[action]: # character atk
             atk = self.actions[action]["dmg"]
-            atk += self.observations[agent]["character"]["atk_permanent"] 
-            for (bonus, used) in self.observations[agent]["character"]["atk_per_turn"]:
+            atk += self.observations[agent]["Kaeya"]["atk_permanent"] 
+            for (bonus, used) in self.observations[agent]["Kaeya"]["atk_per_turn"]:
                 if used == False:
-                    self.observations[agent]["character"]["atk_per_turn"][1] = True
+                    self.observations[agent]["Kaeya"]["atk_per_turn"][1] = True
                     atk += bonus
             total_dmg = atk
             # add energy
             if "energy" in self.actions[action]:
-                self.observations[agent]["character"]["energy"] += self.actions[action]["energy"]
-                self.observations[agent]["character"]["energy"] = max(self.observation_space[agent]["character"]["energy"], self.observation_space[agent]["character"]["max_energy"])
-            elif self.observations[agent]["character"]["energy"] == self.observation_space[agent]["character"]["max_energy"]:
-                self.observations[agent]["character"]["energy"] = 0 # use burst
+                self.observations[agent]["Kaeya"]["energy"] += self.actions[action]["energy"]
+                self.observations[agent]["Kaeya"]["energy"] = max(self.observations[agent]["Kaeya"]["energy"], self.observations[agent]["Kaeya"]["max_energy"])
+            elif self.observations[agent]["Kaeya"]["energy"] == self.observations[agent]["Kaeya"]["max_energy"]:
+                self.observations[agent]["Kaeya"]["energy"] = 0 # use burst
             else:
                 pass # can't use burst, shouldn't happen
             # deal dmg to opposite character 
-            self.observations[other_agent]["character"]["hp"] -= atk
+            self.observations[other_agent]["Kaeya"]["hp"] -= atk
         else:
-            self.observations[agent]["character"]["cards"].remove(self.word_to_id[action])
+            np.delete(self.observations[agent]["cards"], [self.word_to_id[action]])
             if "hp" in self.actions[action]:
-                cur_hp = self.observations[agent]["character"]["hp"]
+                cur_hp = self.observations[agent]["Kaeya"]["hp"]
                 cur_hp += self.actions[action]["hp"]
-                max_hp = self.observations[agent]["character"]["max_hp"]
-                self.observations[agent]["character"]["hp"] = min(max_hp, cur_hp)
-                self.observations[agent]["character"]["full"] = True
+                max_hp = self.observations[agent]["Kaeya"]["max_hp"]
+                self.observations[agent]["Kaeya"]["hp"] = min(max_hp, cur_hp)
+                self.observations[agent]["Kaeya"]["full"] = True
             if "atk_permanent" in self.actions[action]:
-                self.observations[agent]["character"]["atk_permanent"] += self.actions[action]["atk_permanent"]
+                self.observations[agent]["Kaeya"]["atk_permanent"] += self.actions[action]["atk_permanent"]
             if "atk_per_turn" in self.actions[action]:
-                self.observations[agent]["character"]["atk_permanent"].append(self.actions[action]["atk_per_turn"], False) # once per turn
+                self.observations[agent]["Kaeya"]["atk_permanent"].append(self.actions[action]["atk_per_turn"], False) # once per turn
             if self.actions[action]["card_type"] == "artifact":
-                self.observations[agent]["character"]["artifact"] = action
+                self.observations[agent]["Kaeya"]["artifact"] = action
             if self.actions[action]["card_type"] == "weapon":
-                self.observations[agent]["character"]["weapon"] = action
+                self.observations[agent]["Kaeya"]["weapon"] = action
 
         # rewards for good actions
         if action in ["kaeya_normal", "kaeya_skill", "kaeya_burst"]:
-            reward += total_dmg + self.observations[agent]["character"]["hp"] # add current hp to incentivize rounds that end with higher hp
+            reward += total_dmg + self.observations[agent]["Kaeya"]["hp"] # add current hp to incentivize rounds that end with higher hp
         
         # kills opponent
-        if self.observations[other_agent]["character"]["hp"] <= 0:
+        if self.observations[other_agent]["Kaeya"]["hp"] <= 0:
             reward += 100 #big reward
             # directly end game here in mini double
             self.done = True 
             self.winner = agent
 
         # check for new round
-        if self.observations[agent]["declared_end"] and self.observation_space[other_agent]["declared_end"]:
-            self.observations[agent]["character"]["atk_per_turn"][1] = False
+        if self.observations[agent]["declared_end"] and self.observations[other_agent]["declared_end"]:
+            self.observations[agent]["Kaeya"]["atk_per_turn"][1] = False
             self.observations[agent]["declared_end"] = False
             self.observations[agent]["full"] = False
             self.observations[agent]["dice"] = 4
@@ -200,7 +201,7 @@ class GITCGDoubleMiniGymEnv(gym.Env):
             self.observations[other_agent]["dice"] = 4
 
             turn += 1
-        # return observation, reward, done (terminated), (truncated), info (debug output)
+        return self.observations, reward, self.done, False, {}
 
 
     def close(self):
