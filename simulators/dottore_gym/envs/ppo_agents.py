@@ -153,7 +153,7 @@ model = PPO("MlpPolicy", vec_env, verbose=1)
 
     
 n_cycles = 5                # Number of cycles
-timesteps_per_cycle = 20000 # Number of timesteps per cycle
+timesteps_per_cycle = 1024  # Number of timesteps per cycle
 eval_episodes = 10          # Number of episodes for each evaluation
 
 for cycle in range(n_cycles):

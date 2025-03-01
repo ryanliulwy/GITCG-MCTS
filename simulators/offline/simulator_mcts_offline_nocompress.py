@@ -17,7 +17,7 @@ import pickle # offline pls
 TRAIN_NAME = 'default'
 
 try:
-    with open('offline_dict.pkl', 'rb') as f:
+    with open('offline_nocompress_dict.pkl', 'rb') as f:
         offline_dict = pickle.load(f)
     print("loaded existing model")
 except FileNotFoundError:
@@ -60,7 +60,7 @@ for i in range(total_games):
     elif game_state.get_winner() == Pid.P2:
         p2_wins += 1
 
-with open('offline_dict.pkl', 'wb') as f:
+with open('offline_no_compress_dict.pkl', 'wb') as f:
     pickle.dump(agMCTS.offline_dict, f)
 
 end = time.time()

@@ -104,6 +104,7 @@ class GITCGDoubleMiniGymEnv(gym.Env):
         self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.next()
         self.done = False
+        self.truncated = False
         return self.observations, {}
 
     def get_action_mask(self, agent):
@@ -111,6 +112,8 @@ class GITCGDoubleMiniGymEnv(gym.Env):
         mask = [0] * len(self.actions)
         for action in self.actions.keys():
             value = self.actions[action] 
+            if "kaeya" in action and self.observations[agent]["Kaeya"]["hp"] <= 0: 
+                continue # current character is dead
             if self.observations[agent]["declared_end"] and action != "end_round_action":
                 continue # need to end round after end
             if "card_type" in action and self.word_to_id[action] not in self.observations[agent]["cards"]:
@@ -126,16 +129,27 @@ class GITCGDoubleMiniGymEnv(gym.Env):
 
     
     def step(self, action):
+        if (self.turn > 15):
+            self.done = True
+            self.truncated = True
         agent = self.agent_selection
         other_agent = "player_0" if agent == "player_1" else "player_1"
         reward = 0
         total_dmg = 0
         action = self.id_to_word[action+1]
+        print(action, self.observations[agent]["dice"], agent, self.observations[agent]["Kaeya"]["hp"], self.observations[other_agent]["Kaeya"]["hp"], self.done)
 
         # check if action is valid?
         if self.get_action_mask(agent)[list(self.actions).index(action)] == 0:
             reward = -100 # invalid
+            print("-100 reward")
             action = "end_round_action"
+
+        # subtract dice
+        self.observations[agent]["dice"] -= self.actions[action]["dice_cost"]
+        if (self.observations[agent]["dice"] < 0): # shouldn't happen
+            print("ERROR!! dice less than zero")
+            return -1
         
         # apply action
         if action == "end_round_action":
@@ -160,9 +174,14 @@ class GITCGDoubleMiniGymEnv(gym.Env):
             else:
                 pass # can't use burst, shouldn't happen
             # deal dmg to opposite character 
-            self.observations[other_agent]["Kaeya"]["hp"] -= atk
+            self.observations[other_agent]["Kaeya"]["hp"] -= total_dmg
+            print("ATK!!", self.observations[other_agent]["Kaeya"]["hp"] + total_dmg, self.observations[other_agent]["Kaeya"]["hp"])
         else:
-            np.delete(self.observations[agent]["cards"], [self.word_to_id[action]])
+            print("before", self.observations[agent]["cards"])
+            self.observations[agent]["cards"] = np.delete(self.observations[agent]["cards"], np.where(self.observations[agent]["cards"] == self.word_to_id[action])[0][0]) if np.any(self.observations[agent]["cards"] == self.word_to_id[action]) else self.observations[agent]["cards"]
+            if (len(self.observations[agent]["cards"]) < 5):
+                self.observations[agent]["cards"] = np.append(self.observations[agent]["cards"], -1) # filler for env to retain same size
+            print("after", self.observations[agent]["cards"])
             if "hp" in self.actions[action]:
                 cur_hp = self.observations[agent]["Kaeya"]["hp"]
                 cur_hp += self.actions[action]["hp"]
@@ -191,7 +210,9 @@ class GITCGDoubleMiniGymEnv(gym.Env):
 
         # check for new round
         if self.observations[agent]["declared_end"] and self.observations[other_agent]["declared_end"]:
-            self.observations[agent]["Kaeya"]["atk_per_turn"][1] = False
+            for i in range(len(self.observations[agent]["Kaeya"]["atk_per_turn"])):
+                bonus = self.observations[agent]["Kaeya"]["atk_per_turn"][i][0]
+                self.observations[agent]["Kaeya"]["atk_per_turn"][i] = (bonus, False)
             self.observations[agent]["declared_end"] = False
             self.observations[agent]["full"] = False
             self.observations[agent]["dice"] = 4
@@ -201,8 +222,12 @@ class GITCGDoubleMiniGymEnv(gym.Env):
             self.observations[other_agent]["full"] = False
             self.observations[other_agent]["dice"] = 4
 
-            turn += 1
-        return self.observations, reward, self.done, False, {}
+            self.turn += 1
+
+        # switch player for the next step
+        self.agent_selection = self._agent_selector.next()
+        
+        return self.observations, reward, self.done, self.truncated, {}
 
 
     def close(self):
