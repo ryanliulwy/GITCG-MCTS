@@ -17,7 +17,7 @@ wandb.init(project="dgisim-regular-mcts", name=f"random_vs_mcts_50")
 
 p1_wins = 0
 p2_wins = 0
-total_games = 30
+total_games = 50
 
 action_counts = {} # action tracker
 
@@ -69,10 +69,13 @@ for i in range(total_games):
     print("Winner is", game_state.get_winner())
     if game_state.get_winner() == Pid.P1:
         p1_wins += 1
+        wandb.log({"P1 wins": p1_wins}, step=i)
     elif game_state.get_winner() == Pid.P2:
         p2_wins += 1
+        wandb.log({"P2 wins": p2_wins}, step=i)
     print(action_counts)
-
+    for action, count in action_counts.items():
+        wandb.log({action: count}, step=i)
 
 end = time.time()
 print(end - start, " seconds taken.")

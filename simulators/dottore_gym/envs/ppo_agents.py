@@ -5,18 +5,28 @@ from stable_baselines3 import PPO
 from gitcg_double_mini_gym_env import GITCGDoubleMiniGymEnv
 
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.evaluation import evaluate_policy
 from gymnasium.spaces.utils import flatten_space, flatten
 import gymnasium as gym
 
 import numpy as np
 from gymnasium import spaces
 
+import wandb
+from wandb.integration.sb3 import WandbCallback
+
 class PettingZooSB3Wrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
         
         # Get the size of the flattened observation
-        self.observation_size = self._get_obs_size()
+        full_obs = self.env.reset()[0]
+        first_agent_id = self.env.agents[0]  # e.g. "player_0"
+        example_obs = full_obs[first_agent_id]
+        flattened_obs = self._flatten_observation(example_obs)
+        
+        self.observation_size = flattened_obs.size
         
         # Define a Box space with the correct shape
         self.observation_space = spaces.Box(
@@ -24,10 +34,6 @@ class PettingZooSB3Wrapper(gym.Wrapper):
         )
         
         self.action_space = env.action_space()  # Ensure this works
-
-    def _get_obs_size(self):
-        """Calculate the size of the flattened observation space"""
-        return 27  # 10 (character) + 1 (dice) + 5 (cards) + 1 (declared_end) + 8 (action_mask)
 
     def _flatten_observation(self, obs):
         """Flatten nested dictionary into a structured 1D numpy array."""
@@ -103,9 +109,69 @@ class MaskedPPO(PPO):
         return action
 
 def make_env():
-    return PettingZooSB3Wrapper(GITCGDoubleMiniGymEnv())
+    env = PettingZooSB3Wrapper(GITCGDoubleMiniGymEnv())
+    env = Monitor(env)
+    return env
+
+TOTAL_TIMESTEPS = 100000
+run = wandb.init(
+        project="gitcg-double-mini-ppo",   # Change to your project name
+        config={
+            "total_timesteps": TOTAL_TIMESTEPS,
+            "env_name": "GITCGDoubleMiniGymEnv",
+            "algo": "PPO"
+        })
 
 vec_env = make_vec_env(make_env, n_envs=4)
 
 model = PPO("MlpPolicy", vec_env, verbose=1)
-model.learn(total_timesteps=100000)
+
+# from stable_baselines3.common.callbacks import BaseCallback
+
+# class DebugCallback(BaseCallback):
+#     def __init__(self, verbose=0):
+#         super().__init__(verbose)
+    
+#     # Called once when the training starts
+#     def _init_callback(self) -> None:
+#         pass
+
+#     # Called at each environment step (at most once per rollout)
+#     def _on_step(self) -> bool:
+#         # Must return True for the training to continue
+#         return True
+
+#     # Called when the training ends
+#     def _on_training_end(self) -> None:
+#         import wandb
+#         wandb.log({"debug_metric": 123}, step=self.model.num_timesteps)
+
+# model.learn(
+#     total_timesteps=TOTAL_TIMESTEPS,
+#     callback=[WandbCallback(), DebugCallback()]
+# )
+
+    
+n_cycles = 5                # Number of cycles
+timesteps_per_cycle = 20000 # Number of timesteps per cycle
+eval_episodes = 10          # Number of episodes for each evaluation
+
+for cycle in range(n_cycles):
+    # train
+    print(f"===== Starting training cycle {cycle + 1} of {n_cycles} =====")
+    model.learn(total_timesteps=timesteps_per_cycle)
+    # eval
+    mean_reward, std_reward = evaluate_policy(
+        model, 
+        vec_env, 
+        n_eval_episodes=eval_episodes
+    )
+    # log
+    wandb.log({
+        "cycle": cycle + 1,
+        "mean_reward": mean_reward,
+        "std_reward": std_reward
+    })
+    print(f"[Cycle {cycle+1}] Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
+
+wandb.finish()

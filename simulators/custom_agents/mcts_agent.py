@@ -21,7 +21,7 @@ class Node:
 
 class MCTSAgent(PlayerAgent):
     def __init__(self, ) -> None:
-        self.budget = 100
+        self.budget = 1000
         # self.game_state = history[-1]
         # self.pid = pid
         # self.root = Node(history[-1], [])
@@ -54,7 +54,7 @@ class MCTSAgent(PlayerAgent):
         while not node.is_terminal:
             # limit to X different actions
             # print(len(node.tried_actions))
-            if len(node.tried_actions) <= 5:
+            if len(node.tried_actions) <= 10:
                 # any unseen actions after the first X 
                 # pretend they don't exist
                 return self.expand(node)

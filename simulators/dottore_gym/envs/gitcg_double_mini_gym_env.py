@@ -31,10 +31,9 @@ class GITCGDoubleMiniGymEnv(gym.Env):
         self.agents = self.possible_agents[:]
         self.observations = {}
         
-        self.vocab = ["broken_rimes_echo", "hash_brown", "sweet_madame", "skyward_blade", "kaeya_normal", "kaeya_skill", "kaeya_burst"]
+        self.vocab = ["broken_rimes_echo", "hash_brown", "sweet_madame", "skyward_blade", "kaeya_normal", "kaeya_skill", "kaeya_burst", "end_round_action"]
         self.word_to_id = {word: idx for idx, word in enumerate(self.vocab, start=1)}
         self.id_to_word = {idx: word for word, idx in self.word_to_id.items()}
-        print(self.word_to_id)
         
         self.reset()
     
@@ -77,7 +76,7 @@ class GITCGDoubleMiniGymEnv(gym.Env):
                     "max_energy": 2,
                     "energy": 0,
                     "atk_permanent": 0, # bonus atk 
-                    "atk_per_turn": [tuple((0,1))], # bonus atk once per turn
+                    "atk_per_turn": [], # bonus atk once per turn
                     "atk_discount": 0,
                     "actions": np.array([
                             self.word_to_id["kaeya_normal"],
@@ -134,7 +133,6 @@ class GITCGDoubleMiniGymEnv(gym.Env):
         action = self.id_to_word[action+1]
 
         # check if action is valid?
-        print(self.get_action_mask(agent), action)
         if self.get_action_mask(agent)[list(self.actions).index(action)] == 0:
             reward = -100 # invalid
             action = "end_round_action"
@@ -145,9 +143,12 @@ class GITCGDoubleMiniGymEnv(gym.Env):
         elif "card_type" not in self.actions[action]: # character atk
             atk = self.actions[action]["dmg"]
             atk += self.observations[agent]["Kaeya"]["atk_permanent"] 
-            for (bonus, used) in self.observations[agent]["Kaeya"]["atk_per_turn"]:
+            for i in range(len(self.observations[agent]["Kaeya"]["atk_per_turn"])):
+                bonus = self.observations[agent]["Kaeya"]["atk_per_turn"][i][0]
+                used = self.observations[agent]["Kaeya"]["atk_per_turn"][i][1]
+                # print(bonus, used)
                 if used == False:
-                    self.observations[agent]["Kaeya"]["atk_per_turn"][1] = True
+                    self.observations[agent]["Kaeya"]["atk_per_turn"][i] = (bonus, True)
                     atk += bonus
             total_dmg = atk
             # add energy
@@ -171,7 +172,7 @@ class GITCGDoubleMiniGymEnv(gym.Env):
             if "atk_permanent" in self.actions[action]:
                 self.observations[agent]["Kaeya"]["atk_permanent"] += self.actions[action]["atk_permanent"]
             if "atk_per_turn" in self.actions[action]:
-                self.observations[agent]["Kaeya"]["atk_permanent"].append(self.actions[action]["atk_per_turn"], False) # once per turn
+                self.observations[agent]["Kaeya"]["atk_per_turn"].append((self.actions[action]["atk_per_turn"], False)) # once per turn
             if self.actions[action]["card_type"] == "artifact":
                 self.observations[agent]["Kaeya"]["artifact"] = action
             if self.actions[action]["card_type"] == "weapon":
